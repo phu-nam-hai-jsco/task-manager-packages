@@ -1,0 +1,105 @@
+# =============================================================================
+# task-manager-packages — Publish Docker Images
+# =============================================================================
+# Repo public này là "nhà" của các GHCR package. Workflow chạy TẠI ĐÂY (không
+# phải trong task-manager) nên package tạo ra tự động:
+#   - link vào repo task-manager-packages (sidebar Packages của repo này)
+#   - visibility PUBLIC (theo visibility của repo chạy workflow)
+#
+# Trigger:
+#   - repository_dispatch từ task-manager (caller mỏng dùng SUBMODULE_TOKEN):
+#       event_type: publish-server | publish-web | publish-migrator
+#       client_payload: { ref, version, branch }
+#   - workflow_dispatch thủ công (inputs: image, ref, version, branch)
+#
+# Yêu cầu secret: SUBMODULE_TOKEN (PAT scope repo — checkout task-manager private)
+# =============================================================================
+
+name: Publish Docker Images
+
+on:
+  repository_dispatch:
+    types: [publish-server, publish-web, publish-migrator]
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Image cần publish'
+        required: true
+        type: choice
+        options: [server, web, migrator]
+      ref:
+        description: 'Commit SHA của task-manager cần build (bỏ trống = head của branch)'
+        required: false
+        type: string
+      version:
+        description: 'Version tag (bỏ trống = lấy từ source)'
+        required: false
+        type: string
+      branch:
+        description: 'Lane (main/dev) — quyết định hậu tố -dev trên tên image'
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  resolve:
+    name: Resolve source ref
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+    steps:
+      - name: Resolve
+        id: ref
+        env:
+          GH_TOKEN: ${{ secrets.SUBMODULE_TOKEN }}
+        run: |
+          REF="${{ github.event.client_payload.ref || inputs.ref || '' }}"
+          if [ -z "$REF" ]; then
+            BRANCH="${{ github.event.client_payload.branch || inputs.branch || 'main' }}"
+            REF=$(gh api "repos/phu-nam-hai-jsco/task-manager/branches/$BRANCH" --jq .commit.sha)
+            echo "Resolved $BRANCH head: $REF"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+  server:
+    if: >-
+      (github.event_name == 'repository_dispatch' && github.event.action == 'publish-server') ||
+      (github.event_name == 'workflow_dispatch' && inputs.image == 'server')
+    needs: resolve
+    uses: phu-nam-hai-jsco/task-manager-action/.github/workflows/publish-docker-api.yml@main
+    secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
+      source_repository: phu-nam-hai-jsco/task-manager
+      version: ${{ github.event.client_payload.version || inputs.version || '' }}
+      branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
+
+  web:
+    if: >-
+      (github.event_name == 'repository_dispatch' && github.event.action == 'publish-web') ||
+      (github.event_name == 'workflow_dispatch' && inputs.image == 'web')
+    needs: resolve
+    uses: phu-nam-hai-jsco/task-manager-action/.github/workflows/publish-docker-web.yml@main
+    secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
+      source_repository: phu-nam-hai-jsco/task-manager
+      version: ${{ github.event.client_payload.version || inputs.version || '' }}
+      branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
+
+  migrator:
+    if: >-
+      (github.event_name == 'repository_dispatch' && github.event.action == 'publish-migrator') ||
+      (github.event_name == 'workflow_dispatch' && inputs.image == 'migrator')
+    needs: resolve
+    uses: phu-nam-hai-jsco/task-manager-action/.github/workflows/publish-docker-migrator.yml@main
+    secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
+      source_repository: phu-nam-hai-jsco/task-manager
+      version: ${{ github.event.client_payload.version || inputs.version || '' }}
+      branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
