@@ -16,6 +16,7 @@
 # =============================================================================
 
 name: Publish Docker Images
+run-name: "${{ github.workflow }} · ${{ github.event.action || inputs.image }} · ${{ github.event.client_payload.branch || inputs.branch || 'main' }} · tag ${{ github.event.client_payload.version || inputs.version || 'auto' }}"
 
 on:
   repository_dispatch:
