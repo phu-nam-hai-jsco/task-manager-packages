@@ -55,16 +55,22 @@ jobs:
     steps:
       - name: Resolve
         id: ref
+        uses: actions/github-script@v9
         env:
-          GH_TOKEN: ${{ secrets.SUBMODULE_TOKEN }}
-        run: |
-          REF="${{ github.event.client_payload.ref || inputs.ref || '' }}"
-          if [ -z "$REF" ]; then
-            BRANCH="${{ github.event.client_payload.branch || inputs.branch || 'main' }}"
-            REF=$(gh api "repos/phu-nam-hai-jsco/task-manager/branches/$BRANCH" --jq .commit.sha)
-            echo "Resolved $BRANCH head: $REF"
-          fi
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          REF_IN: ${{ github.event.client_payload.ref || inputs.ref || '' }}
+          BRANCH: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
+        with:
+          github-token: ${{ secrets.SUBMODULE_TOKEN }}
+          script: |
+            let ref = process.env.REF_IN;
+            if (!ref) {
+              const b = await github.rest.repos.getBranch({
+                owner: 'phu-nam-hai-jsco', repo: 'task-manager', branch: process.env.BRANCH,
+              });
+              ref = b.data.commit.sha;
+              core.info(`Resolved ${process.env.BRANCH} head: ${ref}`);
+            }
+            core.setOutput('ref', ref);
 
   server:
     if: >-
