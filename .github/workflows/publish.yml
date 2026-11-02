@@ -85,11 +85,42 @@ jobs:
       version: ${{ github.event.client_payload.version || inputs.version || '' }}
       branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
 
+  # NEXT_PUBLIC_* được bake vào bundle lúc build → PHẢI truyền qua build-arg ở đây.
+  # Thiếu env_json thì NEXT_PUBLIC_API_BASE_URL rỗng và URL media (/uploads/...) bị
+  # trình duyệt ghép với host của web thay vì host API.
+  web-env:
+    name: Resolve web build env
+    if: >-
+      (github.event_name == 'repository_dispatch' && github.event.action == 'publish-web') ||
+      (github.event_name == 'workflow_dispatch' && inputs.image == 'web')
+    runs-on: ubuntu-latest
+    outputs:
+      env_json: ${{ steps.env.outputs.env_json }}
+    steps:
+      - name: Build env_json
+        id: env
+        env:
+          BRANCH: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
+          # Ghi đè toàn bộ JSON bằng repo variable (tuỳ chọn), ví dụ để thêm Sentry/AG Grid.
+          OVERRIDE_MAIN: ${{ vars.WEB_ENV_JSON_MAIN }}
+          OVERRIDE_DEV: ${{ vars.WEB_ENV_JSON_DEV }}
+        run: |
+          if [ "$BRANCH" = "main" ]; then
+            DEFAULT='{"BUILD_ENV":"production","NEXT_PUBLIC_API_BASE_URL":"https://api.phunamhai.com","INTERNAL_API_BASE_URL":"http://prod-api:8888","NEXT_PUBLIC_DEBUG":"false"}'
+            JSON="${OVERRIDE_MAIN:-$DEFAULT}"
+          else
+            DEFAULT='{"BUILD_ENV":"development","NEXT_PUBLIC_API_BASE_URL":"https://api-qlcv.tannhatcms.io.vn","INTERNAL_API_BASE_URL":"http://dev-api:8888","NEXT_PUBLIC_DEBUG":"true"}'
+            JSON="${OVERRIDE_DEV:-$DEFAULT}"
+          fi
+          echo "$JSON" | jq -e 'type == "object"' > /dev/null
+          echo "env_json=$(echo "$JSON" | jq -c .)" >> "$GITHUB_OUTPUT"
+          echo "Lane: $BRANCH → NEXT_PUBLIC_API_BASE_URL=$(echo "$JSON" | jq -r '.NEXT_PUBLIC_API_BASE_URL // ""')"
+
   web:
     if: >-
       (github.event_name == 'repository_dispatch' && github.event.action == 'publish-web') ||
       (github.event_name == 'workflow_dispatch' && inputs.image == 'web')
-    needs: resolve
+    needs: [resolve, web-env]
     uses: phu-nam-hai-jsco/task-manager-action/.github/workflows/publish-docker-web.yml@main
     secrets: inherit
     with:
@@ -97,6 +128,7 @@ jobs:
       source_repository: phu-nam-hai-jsco/task-manager
       version: ${{ github.event.client_payload.version || inputs.version || '' }}
       branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
+      env_json: ${{ needs.web-env.outputs.env_json }}
 
   migrator:
     if: >-
