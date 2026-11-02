@@ -104,6 +104,8 @@ jobs:
           # Ghi đè toàn bộ JSON bằng repo variable (tuỳ chọn), ví dụ để thêm Sentry/AG Grid.
           OVERRIDE_MAIN: ${{ vars.WEB_ENV_JSON_MAIN }}
           OVERRIDE_DEV: ${{ vars.WEB_ENV_JSON_DEV }}
+          # Nguồn chính: repo root (task-manager) gửi env_json theo Environment production/development.
+          PAYLOAD_ENV_JSON: ${{ github.event.client_payload.env_json }}
         run: |
           if [ "$BRANCH" = "main" ]; then
             DEFAULT='{"BUILD_ENV":"production","NEXT_PUBLIC_API_BASE_URL":"https://api.phunamhai.com","INTERNAL_API_BASE_URL":"http://prod-api:8888","NEXT_PUBLIC_DEBUG":"false"}'
@@ -111,6 +113,14 @@ jobs:
           else
             DEFAULT='{"BUILD_ENV":"development","NEXT_PUBLIC_API_BASE_URL":"https://api-qlcv.tannhatcms.io.vn","INTERNAL_API_BASE_URL":"http://dev-api:8888","NEXT_PUBLIC_DEBUG":"true"}'
             JSON="${OVERRIDE_DEV:-$DEFAULT}"
+          fi
+          # Ưu tiên env_json từ root nếu hợp lệ và có NEXT_PUBLIC_API_BASE_URL; ngược lại dùng mặc định ở trên.
+          if [ -n "$PAYLOAD_ENV_JSON" ] && \
+             [ -n "$(echo "$PAYLOAD_ENV_JSON" | jq -r 'if type == "object" then .NEXT_PUBLIC_API_BASE_URL // "" else "" end' 2>/dev/null)" ]; then
+            JSON="$PAYLOAD_ENV_JSON"
+            echo "Nguồn env_json: repo root (client_payload)"
+          else
+            echo "Nguồn env_json: mặc định/override của task-manager-packages"
           fi
           echo "$JSON" | jq -e 'type == "object"' > /dev/null
           echo "env_json=$(echo "$JSON" | jq -c .)" >> "$GITHUB_OUTPUT"
