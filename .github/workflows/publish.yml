@@ -20,7 +20,7 @@ run-name: "${{ github.workflow }} · ${{ github.event.action || inputs.image }} 
 
 on:
   repository_dispatch:
-    types: [publish-server, publish-web, publish-migrator]
+    types: [publish-server, publish-web, publish-migrator, promote-docker]
   workflow_dispatch:
     inputs:
       image:
@@ -49,6 +49,8 @@ permissions:
 jobs:
   resolve:
     name: Resolve source ref
+    # promote-docker không build nên không cần resolve ref
+    if: ${{ github.event.action != 'promote-docker' }}
     runs-on: ubuntu-latest
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
@@ -152,3 +154,72 @@ jobs:
       source_repository: phu-nam-hai-jsco/task-manager
       version: ${{ github.event.client_payload.version || inputs.version || '' }}
       branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
+
+  # Luồng mới: repo root → task-manager-action (giải mã payload, build, push tag tạm sha-*)
+  # → dispatch `promote-docker` về đây. Job này chạy trong repo public này để image thuộc
+  # Packages của task-manager-packages; nó chỉ gắn tag chính thức (latest, X.Y.Z...) từ digest đã build.
+  promote:
+    name: Promote docker image
+    if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'promote-docker' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate payload
+        env:
+          IMAGE: ${{ github.event.client_payload.image }}
+          SOURCE: ${{ github.event.client_payload.source }}
+          TAGS_JSON: ${{ toJSON(github.event.client_payload.tags) }}
+        run: |
+          set -euo pipefail
+          case "$IMAGE" in web|server|migrator) ;; *) echo "::error::image không hợp lệ: $IMAGE"; exit 1;; esac
+          OWNER="ghcr.io/${GITHUB_REPOSITORY_OWNER}"
+          # Chỉ cho phép promote image của chính org này, tham chiếu bằng digest bất biến.
+          if ! echo "$SOURCE" | grep -Eq "^${OWNER}/task-manager-(server|web|migrator)(-dev)?@sha256:[0-9a-f]{64}$"; then
+            echo "::error::source không hợp lệ (cần ${OWNER}/task-manager-*@sha256:...)"; exit 1
+          fi
+          COUNT=0
+          : > "$RUNNER_TEMP/tags.txt"
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            if ! echo "$tag" | grep -Eq "^${OWNER}/task-manager-(server|web|migrator)(-dev)?:[A-Za-z0-9._-]{1,128}$"; then
+              echo "::error::tag không hợp lệ: $tag"; exit 1
+            fi
+            echo "$tag" >> "$RUNNER_TEMP/tags.txt"; COUNT=$((COUNT+1))
+          done < <(echo "$TAGS_JSON" | jq -r '.[]?')
+          [ "$COUNT" -gt 0 ] || { echo "::error::payload không có tag nào"; exit 1; }
+          echo "Promote $COUNT tag từ $SOURCE"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || github.token }}
+
+      - name: Tag image from digest
+        env:
+          SOURCE: ${{ github.event.client_payload.source }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            echo "→ $tag"
+            docker buildx imagetools create --tag "$tag" "$SOURCE"
+          done < "$RUNNER_TEMP/tags.txt"
+
+      - name: Summary
+        env:
+          SOURCE: ${{ github.event.client_payload.source }}
+        run: |
+          {
+            echo "## 🐳 Docker image đã phát hành"
+            echo ""
+            echo "**Nguồn:** \`$SOURCE\`"
+            echo ""
+            echo "### Tags"
+            echo '```'
+            cat "$RUNNER_TEMP/tags.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
