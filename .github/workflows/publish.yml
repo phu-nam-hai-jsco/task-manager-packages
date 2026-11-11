@@ -29,7 +29,7 @@ on:
         type: choice
         options: [server, web, migrator]
       ref:
-        description: 'Commit SHA của task-manager cần build (bỏ trống = head của branch)'
+        description: 'Commit SHA của work-management cần build (bỏ trống = head của branch)'
         required: false
         type: string
       version:
@@ -67,7 +67,7 @@ jobs:
             let ref = process.env.REF_IN;
             if (!ref) {
               const b = await github.rest.repos.getBranch({
-                owner: 'phu-nam-hai-jsco', repo: 'task-manager', branch: process.env.BRANCH,
+                owner: 'phu-nam-hai-jsco', repo: 'work-management', branch: process.env.BRANCH,
               });
               ref = b.data.commit.sha;
               core.info(`Resolved ${process.env.BRANCH} head: ${ref}`);
@@ -83,7 +83,7 @@ jobs:
     secrets: inherit
     with:
       ref: ${{ needs.resolve.outputs.ref }}
-      source_repository: phu-nam-hai-jsco/task-manager
+      source_repository: phu-nam-hai-jsco/work-management
       version: ${{ github.event.client_payload.version || inputs.version || '' }}
       branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
 
@@ -106,7 +106,7 @@ jobs:
           # Ghi đè toàn bộ JSON bằng repo variable (tuỳ chọn), ví dụ để thêm Sentry/AG Grid.
           OVERRIDE_MAIN: ${{ vars.WEB_ENV_JSON_MAIN }}
           OVERRIDE_DEV: ${{ vars.WEB_ENV_JSON_DEV }}
-          # Nguồn chính: repo root (task-manager) gửi env_json theo Environment production/development.
+          # Nguồn chính: repo root (work-management) gửi env_json theo Environment production/development.
           PAYLOAD_ENV_JSON: ${{ github.event.client_payload.env_json }}
         run: |
           if [ "$BRANCH" = "main" ]; then
@@ -137,7 +137,7 @@ jobs:
     secrets: inherit
     with:
       ref: ${{ needs.resolve.outputs.ref }}
-      source_repository: phu-nam-hai-jsco/task-manager
+      source_repository: phu-nam-hai-jsco/work-management
       version: ${{ github.event.client_payload.version || inputs.version || '' }}
       branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
       env_json: ${{ needs.web-env.outputs.env_json }}
@@ -151,7 +151,7 @@ jobs:
     secrets: inherit
     with:
       ref: ${{ needs.resolve.outputs.ref }}
-      source_repository: phu-nam-hai-jsco/task-manager
+      source_repository: phu-nam-hai-jsco/work-management
       version: ${{ github.event.client_payload.version || inputs.version || '' }}
       branch: ${{ github.event.client_payload.branch || inputs.branch || 'main' }}
 
