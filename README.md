@@ -14,3 +14,11 @@ reusable build workflows từ [`task-manager-action`](https://github.com/phu-nam
 → build từ source của `task-manager` (checkout bằng secret `SUBMODULE_TOKEN`) → push GHCR.
 
 Secret cần thiết: `SUBMODULE_TOKEN` (PAT scope `repo`).
+
+## 🧹 Dọn lịch sử Actions
+
+`.github/workflows/cleanup-runs.yml` dùng [`igorjs/gh-actions-clean-workflow`](https://github.com/igorjs/gh-actions-clean-workflow) (ghim SHA),
+chạy **hằng ngày 02:17 UTC** hoặc chạy tay (mặc định `dry_run = true` để xem trước).
+Chỉ xoá run **đã hoàn thành** cũ hơn `runs_older_than` ngày (mặc định 7); trong số đó giữ lại `runs_to_keep` run mới nhất
+của mỗi workflow (mặc định 3). `workflow_names` (tuỳ chọn) giới hạn theo tên workflow.
+Mỗi lần chạy xoá tối đa ~1000 run (giới hạn API GitHub); lịch hằng ngày dọn dần phần tồn đọng.

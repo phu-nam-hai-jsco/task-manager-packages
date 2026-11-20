@@ -1,0 +1,88 @@
+# =============================================================================
+# Dọn lịch sử GitHub Actions
+# =============================================================================
+# Dùng igorjs/gh-actions-clean-workflow (ghim SHA, Renovate tự cập nhật):
+#   - Chỉ xoá run ĐÃ HOÀN THÀNH và cũ hơn `runs_older_than` ngày
+#     (run đang chạy / chờ không bao giờ bị đụng tới).
+#   - Trong số run quá hạn đó, giữ lại `runs_to_keep` run mới nhất của MỖI workflow.
+#   - Không phân biệt kết quả (success / failure / cancelled dùng chung một ngưỡng).
+#
+# Lưu ý: API GitHub chỉ trả tối đa 1000 run mỗi truy vấn, nên một lần chạy xoá được
+# tối đa ~1000 run. Chạy hằng ngày để phần tồn đọng được dọn dần.
+#
+# Trigger: chạy định kỳ hằng ngày (xoá thật) + chạy tay (mặc định dry-run để xem trước).
+# Token: GITHUB_TOKEN của repo (cần actions: write) — chỉ dọn run của repo này.
+# =============================================================================
+
+name: Cleanup Workflow Runs
+run-name: "Cleanup Workflow Runs · ${{ github.event_name }}${{ inputs.dry_run == true && ' · dry-run' || '' }}"
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Chỉ liệt kê, không xoá'
+        required: false
+        type: boolean
+        default: true
+      runs_older_than:
+        description: 'Xoá run cũ hơn N ngày'
+        required: false
+        type: string
+        default: '7'
+      runs_to_keep:
+        description: 'Số run quá hạn mới nhất của mỗi workflow vẫn được giữ lại'
+        required: false
+        type: string
+        default: '3'
+      workflow_names:
+        description: 'Chỉ dọn các workflow này (tên, phân tách bằng dấu phẩy; để trống = tất cả)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cleanup-runs
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Clean workflow runs
+        id: clean
+        uses: igorjs/gh-actions-clean-workflow@b910eb365da5e592d865ddd8a72d01cbd720b3b1 # v8
+        with:
+          token: ${{ github.token }}
+          # Chạy theo lịch (schedule) không có inputs → dùng mặc định và xoá thật.
+          dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          runs_older_than: ${{ inputs.runs_older_than || '7' }}
+          runs_to_keep: ${{ inputs.runs_to_keep || '3' }}
+          workflow_names: ${{ inputs.workflow_names || '' }}
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          OLDER_THAN: ${{ inputs.runs_older_than || '7' }}
+          TO_KEEP: ${{ inputs.runs_to_keep || '3' }}
+          FOUND: ${{ steps.clean.outputs.total-runs-found }}
+          DELETED: ${{ steps.clean.outputs.runs-deleted }}
+          FAILED: ${{ steps.clean.outputs.runs-failed }}
+        run: |
+          {
+            echo "## 🧹 Dọn lịch sử Actions"
+            echo
+            echo "- Chế độ: $([ "$DRY_RUN" = "true" ] && echo '**dry-run** (không xoá)' || echo '**xoá thật**')"
+            echo "- Xoá run cũ hơn \`$OLDER_THAN\` ngày · giữ \`$TO_KEEP\` run quá hạn mới nhất mỗi workflow"
+            echo "- Run tìm thấy: ${FOUND:-?} · đã xoá: **${DELETED:-0}** · lỗi: **${FAILED:-0}**"
+          } >> "$GITHUB_STEP_SUMMARY"
