@@ -51,7 +51,7 @@ jobs:
     name: Resolve source ref
     # promote-docker không build nên không cần resolve ref
     if: ${{ github.event.action != 'promote-docker' }}
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
     steps:
@@ -95,7 +95,7 @@ jobs:
     if: >-
       (github.event_name == 'repository_dispatch' && github.event.action == 'publish-web') ||
       (github.event_name == 'workflow_dispatch' && inputs.image == 'web')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     outputs:
       env_json: ${{ steps.env.outputs.env_json }}
     steps:
@@ -161,7 +161,7 @@ jobs:
   promote:
     name: Promote docker image
     if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'promote-docker' }}
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Validate payload
