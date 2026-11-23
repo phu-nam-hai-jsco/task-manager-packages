@@ -5,7 +5,7 @@ tại repo này nên package tự động link về đây và **public** (pull k
 
 | Image (ghcr.io/phu-nam-hai-jsco/...) | Lane main | Lane dev | Mô tả |
 | ------------------------------------ | --------- | -------- | ----- |
-| `task-manager-server` (+ `-dev`)     | `latest`, `X.Y.Z`, `sha-*` | `latest`, `X.Y.Z` | ASP.NET Core 10 API |
+| `task-manager-server` (+ `-dev`)     | `latest`, `X.Y.Z`, `sha-*` | `latest`, `X.Y.Z` | ASP.NET Core 11 API |
 | `task-manager-web` (+ `-dev`)        | `latest`, `X.Y.Z`, `sha-*` | `latest`, `X.Y.Z` | Next.js static export + reverse proxy |
 | `task-manager-migrator` (+ `-dev`)   | `latest`, `X.Y.Z`          | `latest`, `X.Y.Z` | DB migrator (Prisma)  |
 
